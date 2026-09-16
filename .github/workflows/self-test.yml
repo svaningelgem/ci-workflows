@@ -20,5 +20,6 @@ jobs:
       windows: true
       macos: true
       python-versions: '["3.12", "3.14"]'
+      setup: echo FIXTURE_SETUP=ran >> "$GITHUB_ENV"
       pytest-args: --cov --cov-report=xml
       patch-coverage: true

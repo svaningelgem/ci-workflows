@@ -22,6 +22,10 @@ on:
       working-directory:
         type: string
         default: .
+      setup:
+        description: Bash run before `uv sync` in the pytest job, e.g. to install system packages or `echo VAR=x >> "$GITHUB_ENV"`.
+        type: string
+        default: ''
       sync-args:
         description: Extra arguments for `uv sync --locked`.
         type: string
@@ -91,6 +95,10 @@ jobs:
           python-version: ${{ matrix.python }}
           working-directory: ${{ inputs.working-directory }}
           enable-cache: true
+
+      - name: Setup
+        if: inputs.setup != ''
+        run: ${{ inputs.setup }}
 
       # Env-scoped git config instead of `git config --global`, which would
       # persist the token in the home directory of a self-hosted runner.
