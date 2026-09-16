@@ -1,0 +1,126 @@
+name: Python
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: Runner label for the Linux jobs.
+        type: string
+        default: ubuntu-latest
+      windows:
+        description: Also run pytest on a GitHub-hosted Windows runner.
+        type: boolean
+        default: false
+      macos:
+        description: Also run pytest on a GitHub-hosted macOS runner.
+        type: boolean
+        default: false
+      python-versions:
+        description: JSON list of Python versions for pytest; `[""]` uses the project's own pin.
+        type: string
+        default: '[""]'
+      working-directory:
+        type: string
+        default: .
+      sync-args:
+        description: Extra arguments for `uv sync --locked`.
+        type: string
+        default: ''
+      pytest:
+        type: boolean
+        default: true
+      pytest-args:
+        type: string
+        default: ''
+      patch-coverage:
+        description: On PRs, require 100% coverage of changed lines. Needs `--cov --cov-report=xml` in pytest-args.
+        type: boolean
+        default: false
+    secrets:
+      CODECOV_TOKEN:
+        required: false
+      GIT_TOKEN:
+        description: Token for cloning private GitHub dependencies.
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  ruff:
+    runs-on: ${{ inputs.runner }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: ruff format
+        id: format
+        run: uvx ruff format --check .
+
+      - name: ruff check
+        if: steps.format.outcome == 'success' || steps.format.outcome == 'failure'
+        run: uvx ruff check . --diff
+
+  pytest:
+    if: inputs.pytest
+    name: pytest (${{ matrix.os }}${{ matrix.python && format(', {0}', matrix.python) || '' }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(format('["{0}"{1}{2}]', inputs.runner, inputs.windows && ',"windows-latest"' || '', inputs.macos && ',"macos-latest"' || '')) }}
+        python: ${{ fromJSON(inputs.python-versions) }}
+    runs-on: ${{ matrix.os }}
+    env:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # diff-cover compares against the base branch, which a shallow clone lacks.
+          fetch-depth: ${{ fromJSON(inputs.patch-coverage && '0' || '1') }}
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: ${{ matrix.python }}
+          working-directory: ${{ inputs.working-directory }}
+          enable-cache: true
+
+      # Env-scoped git config instead of `git config --global`, which would
+      # persist the token in the home directory of a self-hosted runner.
+      - name: Install dependencies
+        env:
+          GIT_CONFIG_COUNT: ${{ secrets.GIT_TOKEN && '1' || '0' }}
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ secrets.GIT_TOKEN }}@github.com/.insteadOf
+          GIT_CONFIG_VALUE_0: https://github.com/
+        run: uv sync --locked ${{ inputs.sync-args }}
+
+      - name: pytest
+        run: uv run --no-sync pytest ${{ inputs.pytest-args }}
+
+      - name: Patch coverage
+        id: patch_coverage
+        if: inputs.patch-coverage && github.event_name == 'pull_request'
+        run: >-
+          uvx diff-cover coverage.xml
+          --compare-branch=origin/${{ github.base_ref }}
+          --fail-under=100
+          --format markdown:patch-coverage.md
+
+      - name: Publish patch coverage report
+        if: always() && steps.patch_coverage.outcome != 'skipped'
+        run: cat patch-coverage.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage to Codecov
+        if: always() && env.CODECOV_TOKEN != '' && hashFiles(format('{0}/coverage.xml', inputs.working-directory)) != ''
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ env.CODECOV_TOKEN }}
+          files: ${{ inputs.working-directory }}/coverage.xml
+          flags: ${{ runner.os }}

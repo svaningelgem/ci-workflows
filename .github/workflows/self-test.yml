@@ -1,0 +1,24 @@
+name: Self-test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  actionlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: uvx --from actionlint-py actionlint
+
+  python:
+    uses: ./.github/workflows/python.yml
+    with:
+      working-directory: tests/fixture
+      windows: true
+      macos: true
+      python-versions: '["3.12", "3.14"]'
+      pytest-args: --cov --cov-report=xml
+      patch-coverage: true
