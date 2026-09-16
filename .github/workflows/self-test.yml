@@ -23,3 +23,10 @@ jobs:
       setup: echo FIXTURE_SETUP=ran >> "$GITHUB_ENV"
       pytest-args: --cov --cov-report=xml
       patch-coverage: true
+
+  python-ruff-group:
+    uses: ./.github/workflows/python.yml
+    with:
+      working-directory: tests/fixture
+      ruff-group: lint
+      pytest: false
