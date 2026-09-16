@@ -33,6 +33,7 @@ jobs:
 | `windows` / `macos` | `false` | Extra pytest legs on GitHub-hosted runners |
 | `python-versions` | `[""]` | JSON list; `""` uses the project's own Python pin |
 | `working-directory` | `.` | |
+| `setup` | | Bash run before `uv sync` in the pytest job (system packages, `echo VAR=x >> "$GITHUB_ENV"`) |
 | `sync-args` | | Appended to `uv sync --locked` |
 | `pytest` | `true` | `false` for repos without tests |
 | `pytest-args` | | |
