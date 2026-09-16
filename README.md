@@ -4,7 +4,7 @@ Shared GitHub Actions workflows. Change them here once instead of in every repo.
 
 ## Python
 
-`ruff format --check` + `ruff check` (latest ruff via `uvx`) and `pytest` after `uv sync --locked`.
+`ruff format --check` + `ruff check --no-fix` (latest ruff via `uvx`, or a locked one with `ruff-group`) and `pytest` after `uv sync --locked`.
 
 ```yaml
 name: Python
@@ -31,6 +31,7 @@ jobs:
 |---|---|---|
 | `runner` | `ubuntu-latest` | Runner for the Linux jobs |
 | `windows` / `macos` | `false` | Extra pytest legs on GitHub-hosted runners |
+| `ruff-group` | | Dependency group with a locked ruff; empty = latest ruff via `uvx` |
 | `python-versions` | `[""]` | JSON list; `""` uses the project's own Python pin |
 | `working-directory` | `.` | |
 | `setup` | | Bash run before `uv sync` in the pytest job (system packages, `echo VAR=x >> "$GITHUB_ENV"`) |
