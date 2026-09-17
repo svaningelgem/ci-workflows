@@ -88,8 +88,6 @@ jobs:
   lint:
     if: inputs.pylint != '' || inputs.ty != ''
     runs-on: ${{ inputs.runner }}
-    permissions:
-      contents: read
     defaults:
       run:
         shell: bash
