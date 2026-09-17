@@ -21,8 +21,8 @@ on:
         default: ''
       pylint:
         description: >-
-          `true` runs `pylint --recursive=y --ignore=.venv .`; any other string is used as pylint's arguments instead,
-          e.g. `src/ --fail-under=10`. Uses the project's locked pylint if it has one.
+          `true` runs `pylint --recursive=y .`; any other string replaces the `.`, e.g. `src/ --fail-under=10`.
+          Uses the project's locked pylint if it has one.
         type: string
         default: 'false'
       ty:
@@ -93,6 +93,8 @@ jobs:
   pylint:
     if: inputs.pylint != 'false'
     runs-on: ${{ inputs.runner }}
+    env:
+      UV_PROJECT_ENVIRONMENT: ../.venv  # outside the tree pylint scans
     defaults: *defaults
     steps:
       - uses: actions/checkout@v7
@@ -120,7 +122,7 @@ jobs:
         run: uv sync --locked ${{ inputs.sync-args }}
 
       - name: pylint
-        run: uv run --no-sync --with pylint pylint ${{ inputs.pylint == 'true' && '--recursive=y --ignore=.venv .' || inputs.pylint }}
+        run: uv run --no-sync --with pylint pylint --recursive=y ${{ inputs.pylint == 'true' && '.' || inputs.pylint }}
 
   ty:
     if: inputs.ty != 'false'
