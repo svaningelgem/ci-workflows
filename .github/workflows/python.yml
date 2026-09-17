@@ -20,13 +20,17 @@ on:
         type: string
         default: ''
       pylint:
-        description: Arguments for `pylint`, e.g. `src/ --fail-under=10`; empty skips it. Uses the project's locked pylint if it has one.
+        description: >-
+          `true` runs `pylint --recursive=y --ignore=.venv .`; any other string is used as pylint's arguments instead,
+          e.g. `src/ --fail-under=10`. Uses the project's locked pylint if it has one.
         type: string
-        default: ''
+        default: 'false'
       ty:
-        description: Arguments for `ty check`, e.g. `src/`; empty skips it. Uses the project's locked ty if it has one.
+        description: >-
+          `true` runs `ty check`; any other string is appended as its arguments, e.g. `src/`.
+          Uses the project's locked ty if it has one.
         type: string
-        default: ''
+        default: 'false'
       python-versions:
         description: JSON list of Python versions for pytest; `[""]` uses the project's own pin.
         type: string
@@ -86,7 +90,7 @@ jobs:
         run: ${{ inputs.ruff-group != '' && 'uv run --no-sync' || 'uvx' }} ruff check --no-fix .
 
   lint:
-    if: inputs.pylint != '' || inputs.ty != ''
+    if: inputs.pylint != 'false' || inputs.ty != 'false'
     runs-on: ${{ inputs.runner }}
     defaults:
       run:
@@ -118,12 +122,12 @@ jobs:
         run: uv sync --locked ${{ inputs.sync-args }}
 
       - name: pylint
-        if: inputs.pylint != ''
-        run: uv run --no-sync --with pylint pylint ${{ inputs.pylint }}
+        if: inputs.pylint != 'false'
+        run: uv run --no-sync --with pylint pylint ${{ inputs.pylint == 'true' && '--recursive=y --ignore=.venv .' || inputs.pylint }}
 
       - name: ty
-        if: inputs.ty != '' && !cancelled() && steps.install.outcome == 'success'
-        run: uv run --no-sync --with ty ty check ${{ inputs.ty }}
+        if: inputs.ty != 'false' && !cancelled() && steps.install.outcome == 'success'
+        run: uv run --no-sync --with ty ty check ${{ inputs.ty != 'true' && inputs.ty || '' }}
 
   pytest:
     if: inputs.pytest
