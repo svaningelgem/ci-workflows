@@ -30,8 +30,8 @@ jobs:
 | `runner` | `vars.RUNNER_LABEL \|\| 'ubuntu-latest'` | Runner for the Linux jobs; `RUNNER_LABEL` is read from the calling repo |
 | `windows` / `macos` | `false` | Extra pytest legs on GitHub-hosted runners |
 | `ruff-group` | | Dependency group with a locked ruff; empty = latest ruff via `uvx` |
-| `pylint` | | Arguments for the project's `pylint` (`src/ --fail-under=10`); empty = skipped |
-| `ty` | | Arguments for the project's `ty check` (`src/`); empty = skipped |
+| `pylint` | | Arguments for `pylint` (`src/ --fail-under=10`); empty = skipped. Runs in the project's env: its locked pylint if any, else the latest |
+| `ty` | | Arguments for `ty check` (`src/`); empty = skipped. Locked ty if any, else the latest |
 | `python-versions` | `[""]` | JSON list; `""` uses the project's own Python pin. `pylint`/`ty` use the first |
 | `working-directory` | `.` | |
 | `setup` | | Bash run before `uv sync` in the pytest and lint jobs (system packages, `echo VAR=x >> "$GITHUB_ENV"`) |

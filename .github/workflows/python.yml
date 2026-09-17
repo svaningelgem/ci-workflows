@@ -20,11 +20,11 @@ on:
         type: string
         default: ''
       pylint:
-        description: Arguments for `pylint` from the project's dependencies, e.g. `src/ --fail-under=10`; empty skips it.
+        description: Arguments for `pylint`, e.g. `src/ --fail-under=10`; empty skips it. Uses the project's locked pylint if it has one.
         type: string
         default: ''
       ty:
-        description: Arguments for `ty check` from the project's dependencies, e.g. `src/`; empty skips it.
+        description: Arguments for `ty check`, e.g. `src/`; empty skips it. Uses the project's locked ty if it has one.
         type: string
         default: ''
       python-versions:
@@ -121,11 +121,11 @@ jobs:
 
       - name: pylint
         if: inputs.pylint != ''
-        run: uv run --no-sync pylint ${{ inputs.pylint }}
+        run: uv run --no-sync --with pylint pylint ${{ inputs.pylint }}
 
       - name: ty
         if: inputs.ty != '' && !cancelled() && steps.install.outcome == 'success'
-        run: uv run --no-sync ty check ${{ inputs.ty }}
+        run: uv run --no-sync --with ty ty check ${{ inputs.ty }}
 
   pytest:
     if: inputs.pytest
