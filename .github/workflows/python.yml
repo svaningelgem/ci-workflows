@@ -66,8 +66,9 @@ on:
 jobs:
   ruff:
     runs-on: ${{ inputs.runner }}
-    defaults:
+    defaults: &defaults
       run:
+        shell: bash
         working-directory: ${{ inputs.working-directory }}
     steps:
       - uses: actions/checkout@v7
@@ -89,17 +90,15 @@ jobs:
         if: steps.format.outcome == 'success' || steps.format.outcome == 'failure'
         run: ${{ inputs.ruff-group != '' && 'uv run --no-sync' || 'uvx' }} ruff check --no-fix .
 
-  lint:
-    if: inputs.pylint != 'false' || inputs.ty != 'false'
+  pylint:
+    if: inputs.pylint != 'false'
     runs-on: ${{ inputs.runner }}
-    defaults:
-      run:
-        shell: bash
-        working-directory: ${{ inputs.working-directory }}
+    defaults: *defaults
     steps:
       - uses: actions/checkout@v7
 
-      - uses: astral-sh/setup-uv@v7
+      - &setup-uv-lint
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ fromJSON(inputs.python-versions)[0] }}
           working-directory: ${{ inputs.working-directory }}
@@ -114,7 +113,6 @@ jobs:
       # persist the token in the home directory of a self-hosted runner.
       - &install
         name: Install dependencies
-        id: install
         env:
           GIT_CONFIG_COUNT: ${{ secrets.GIT_TOKEN && '1' || '0' }}
           GIT_CONFIG_KEY_0: url.https://x-access-token:${{ secrets.GIT_TOKEN }}@github.com/.insteadOf
@@ -122,11 +120,22 @@ jobs:
         run: uv sync --locked ${{ inputs.sync-args }}
 
       - name: pylint
-        if: inputs.pylint != 'false'
         run: uv run --no-sync --with pylint pylint ${{ inputs.pylint == 'true' && '--recursive=y --ignore=.venv .' || inputs.pylint }}
 
+  ty:
+    if: inputs.ty != 'false'
+    runs-on: ${{ inputs.runner }}
+    defaults: *defaults
+    steps:
+      - uses: actions/checkout@v7
+
+      - *setup-uv-lint
+
+      - *setup
+
+      - *install
+
       - name: ty
-        if: inputs.ty != 'false' && !cancelled() && steps.install.outcome == 'success'
         run: uv run --no-sync --with ty ty check ${{ inputs.ty != 'true' && inputs.ty || '' }}
 
   pytest:
@@ -138,10 +147,7 @@ jobs:
         os: ${{ fromJSON(format('["{0}"{1}{2}]', inputs.runner, inputs.windows && ',"windows-latest"' || '', inputs.macos && ',"macos-latest"' || '')) }}
         python: ${{ fromJSON(inputs.python-versions) }}
     runs-on: ${{ matrix.os }}
-    defaults:
-      run:
-        shell: bash
-        working-directory: ${{ inputs.working-directory }}
+    defaults: *defaults
     steps:
       - uses: actions/checkout@v7
 
@@ -177,10 +183,7 @@ jobs:
     runs-on: ${{ inputs.runner }}
     env:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-    defaults:
-      run:
-        shell: bash
-        working-directory: ${{ inputs.working-directory }}
+    defaults: *defaults
     steps:
       - uses: actions/checkout@v7
         with:
@@ -229,3 +232,11 @@ jobs:
         with:
           token: ${{ env.CODECOV_TOKEN }}
           files: ${{ inputs.working-directory }}/coverage.xml
+
+  result:
+    needs: [ruff, pylint, ty, pytest, coverage]
+    if: ${{ !cancelled() }}
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1

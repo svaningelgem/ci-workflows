@@ -67,6 +67,8 @@ jobs:
       GIT_TOKEN: ${{ secrets.PRIVATE_DEPS_PAT }}
 ```
 
+ruff, pylint, ty and the pytest matrix run in parallel; `coverage` follows pytest, and `result` fails if any job failed, so make `result` the required status check.
+
 | Input | Default | |
 |---|---|---|
 | `runner` | `vars.RUNNER_LABEL \|\| 'ubuntu-latest'` | Runner for the Linux jobs; `RUNNER_LABEL` is read from the calling repo |
