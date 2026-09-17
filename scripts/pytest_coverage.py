@@ -16,7 +16,8 @@ def main() -> int:
     cov.set_option("run:parallel", True)
     cov.set_option("run:relative_files", False)
     cov.set_option("run:disable_warnings", ["no-data-collected"])
-    os.environ["COVERAGE_PROCESS_CONFIG"] = cov.config.serialize()
+    if hasattr(cov.config, "serialize"):  # missing before coverage 7.10
+        os.environ["COVERAGE_PROCESS_CONFIG"] = cov.config.serialize()
     cov.start()
 
     import pytest  # after cov.start(), so plugin imports are measured
