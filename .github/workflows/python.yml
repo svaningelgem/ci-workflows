@@ -56,6 +56,10 @@ on:
         description: Minimum coverage of the lines and branches a PR changes, merged across the matrix; 0 only reports.
         type: number
         default: 100
+      total-coverage:
+        description: Minimum total coverage of the merged data; 0 leaves it to the project's `[tool.coverage.report] fail_under`.
+        type: number
+        default: 0
     secrets:
       CODECOV_TOKEN:
         required: false
@@ -166,7 +170,7 @@ jobs:
 
       - name: pytest
         run: >-
-          uv run --no-sync --with pytest --with 'coverage[toml]>=7.13'
+          uv run --no-sync --with pytest --with 'coverage[toml]>=7.13; python_version >= "3.10"' --with 'coverage[toml]'
           https://raw.githubusercontent.com/${{ job.workflow_repository }}/${{ job.workflow_sha }}/scripts/pytest_coverage.py
           ${{ inputs.pytest-args }}
 
@@ -235,6 +239,19 @@ jobs:
         with:
           token: ${{ env.CODECOV_TOKEN }}
           files: ${{ inputs.working-directory }}/coverage.xml
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() && steps.combine.outcome == 'success' }}
+        with:
+          name: merged-coverage
+          path: ${{ inputs.working-directory }}/coverage.xml
+          overwrite: true
+
+      - name: Total coverage
+        if: ${{ !cancelled() && steps.combine.outcome == 'success' }}
+        run: >-
+          uvx --from 'coverage[toml]' coverage report --skip-covered --skip-empty
+          ${{ inputs.total-coverage > 0 && format('--fail-under={0}', inputs.total-coverage) || '' }}
 
   result:
     needs: [ruff, pylint, ty, pytest, coverage]

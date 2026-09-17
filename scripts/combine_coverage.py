@@ -15,6 +15,7 @@ def main() -> None:
     cov = coverage.Coverage()
     cov.set_option("paths", {"legs": [".", *roots]})
     cov.combine([str(leg) for leg in legs], strict=True)
+    cov.save()
     cov.xml_report(outfile="coverage.xml")
 
 

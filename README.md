@@ -62,12 +62,13 @@ jobs:
       pytest: true
       pytest-args: -n auto
       patch-coverage: 90
+      total-coverage: 80
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       GIT_TOKEN: ${{ secrets.PRIVATE_DEPS_PAT }}
 ```
 
-ruff, pylint, ty and the pytest matrix run in parallel; `coverage` follows pytest, and `result` fails if any job failed, so make `result` the required status check.
+ruff, pylint, ty and the pytest matrix run in parallel; `coverage` follows pytest, and `result` fails if any job failed, so make `result` the required status check. The merged `coverage.xml` is uploaded as the `merged-coverage` artifact for later jobs, e.g. a Sonar scan with `needs: python`.
 
 | Input | Default | |
 |---|---|---|
@@ -83,6 +84,7 @@ ruff, pylint, ty and the pytest matrix run in parallel; `coverage` follows pytes
 | `pytest` | `true` | `false` for repos without tests |
 | `pytest-args` | | |
 | `patch-coverage` | `100` | Minimum % of changed lines and branches covered, merged across the matrix; `0` only reports. Posted as a PR comment when the caller grants `pull-requests: write` |
+| `total-coverage` | `0` | Minimum total % of the merged coverage; `0` leaves it to the project's `[tool.coverage.report] fail_under` |
 
 Secrets (passed explicitly, `secrets: inherit` doesn't cross owners): `CODECOV_TOKEN` uploads the merged coverage, `GIT_TOKEN` clones private GitHub dependencies.
 
