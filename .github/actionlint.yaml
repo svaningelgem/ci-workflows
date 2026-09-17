@@ -5,5 +5,5 @@ paths:
       - 'property "workflow_(repository|sha)" is not defined'
   .github/workflows/self-test.yml:
     ignore:
-      # GitHub passes `true` to a string input as "true"; actionlint is stricter than GitHub here.
+      # GitHub accepts `true` for string inputs
       - 'input "(pylint|ty)" is typed as string by reusable workflow'
