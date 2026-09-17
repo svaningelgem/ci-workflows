@@ -38,7 +38,7 @@ jobs:
 | `sync-args` | | Appended to `uv sync --locked` |
 | `pytest` | `true` | `false` for repos without tests |
 | `pytest-args` | | |
-| `patch-coverage` | `false` | PRs must cover 100% of changed lines; needs `--cov --cov-report=xml` |
+| `patch-coverage` | `false` | PRs must cover 100% of changed lines and branches, reported in a sticky PR comment; needs `--cov --cov-report=xml` and `pull-requests: write` on the calling job |
 
 Secrets (passed explicitly, `secrets: inherit` doesn't cross owners): `CODECOV_TOKEN` uploads `coverage.xml` when present, `GIT_TOKEN` clones private GitHub dependencies.
 

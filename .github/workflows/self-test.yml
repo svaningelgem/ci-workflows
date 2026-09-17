@@ -15,6 +15,9 @@ jobs:
 
   python:
     uses: ./.github/workflows/python.yml
+    permissions:
+      contents: read
+      pull-requests: write
     with:
       working-directory: tests/fixture
       windows: true

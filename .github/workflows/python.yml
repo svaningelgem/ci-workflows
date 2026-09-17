@@ -41,7 +41,9 @@ on:
         type: string
         default: ''
       patch-coverage:
-        description: On PRs, require 100% coverage of changed lines. Needs `--cov --cov-report=xml` in pytest-args.
+        description: >-
+          On PRs, require 100% line and branch coverage of changed lines and post it as a PR comment.
+          Needs `--cov --cov-report=xml` in pytest-args and `pull-requests: write` granted by the caller.
         type: boolean
         default: false
     secrets:
@@ -51,12 +53,14 @@ on:
         description: Token for cloning private GitHub dependencies.
         required: false
 
-permissions:
-  contents: read
-
+# No workflow-level permissions: pytest inherits the caller's token, so only callers that
+# want the patch-coverage comment grant `pull-requests: write`. Requesting it here would
+# fail every caller that doesn't.
 jobs:
   ruff:
     runs-on: ${{ inputs.runner }}
+    permissions:
+      contents: read
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
@@ -127,14 +131,23 @@ jobs:
         id: patch_coverage
         if: inputs.patch-coverage && github.event_name == 'pull_request'
         run: >-
-          uvx diff-cover coverage.xml
+          uvx 'diff-cover>=10.4' coverage.xml
           --compare-branch=origin/${{ github.base_ref }}
+          --branch-coverage
           --fail-under=100
           --format markdown:patch-coverage.md
 
       - name: Publish patch coverage report
         if: always() && steps.patch_coverage.outcome != 'skipped'
         run: cat patch-coverage.md >> "$GITHUB_STEP_SUMMARY"
+
+      # ponytail: one comment per PR, so matrix legs overwrite each other; add the leg to `header` if they ever diverge.
+      - name: Comment patch coverage on PR
+        if: always() && steps.patch_coverage.outcome != 'skipped'
+        uses: marocchino/sticky-pull-request-comment@v3.0.5
+        with:
+          header: patch-coverage
+          path: ${{ inputs.working-directory }}/patch-coverage.md
 
       - name: Upload coverage to Codecov
         if: always() && env.CODECOV_TOKEN != '' && hashFiles(format('{0}/coverage.xml', inputs.working-directory)) != ''
