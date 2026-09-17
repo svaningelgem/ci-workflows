@@ -253,8 +253,21 @@ jobs:
           uvx --from 'coverage[toml]' coverage report --skip-covered --skip-empty
           ${{ inputs.total-coverage > 0 && format('--fail-under={0}', inputs.total-coverage) || '' }}
 
+  pr-title:
+    if: github.event_name == 'pull_request'
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - name: Conventional Commits title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if ! printf '%s\n' "$TITLE" | grep -Eq '^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([^)]+\))?!?: .+'; then
+            echo "::error::PR title is not a Conventional Commits title (e.g. 'fix(parser): handle empty input'): $TITLE"
+            exit 1
+          fi
+
   result:
-    needs: [ruff, pylint, ty, pytest, coverage]
+    needs: [ruff, pylint, ty, pytest, coverage, pr-title]
     if: ${{ !cancelled() }}
     runs-on: ${{ inputs.runner }}
     steps:
