@@ -3,3 +3,7 @@ paths:
     ignore:
       # not in actionlint yet
       - 'property "workflow_(repository|sha)" is not defined'
+  .github/workflows/self-test.yml:
+    ignore:
+      # GitHub accepts `true` for string inputs
+      - 'input "(pylint|ty)" is typed as string by reusable workflow'

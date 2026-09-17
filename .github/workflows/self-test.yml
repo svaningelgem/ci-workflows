@@ -30,4 +30,6 @@ jobs:
     with:
       working-directory: tests/fixture
       ruff-group: lint
+      pylint: test_fixture.py --fail-under=4
+      ty: true
       pytest: false
