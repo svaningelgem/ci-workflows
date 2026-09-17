@@ -93,8 +93,6 @@ jobs:
   pylint:
     if: inputs.pylint != 'false'
     runs-on: ${{ inputs.runner }}
-    env:
-      UV_PROJECT_ENVIRONMENT: ../.venv  # outside the tree pylint scans
     defaults: *defaults
     steps:
       - uses: actions/checkout@v7
@@ -105,6 +103,9 @@ jobs:
           python-version: ${{ fromJSON(inputs.python-versions)[0] }}
           working-directory: ${{ inputs.working-directory }}
           enable-cache: true
+
+      - name: Keep the venv out of the tree pylint scans
+        run: echo "UV_PROJECT_ENVIRONMENT=$RUNNER_TEMP/venv" >> "$GITHUB_ENV"
 
       - &setup
         name: Setup

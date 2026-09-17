@@ -78,7 +78,7 @@ ruff, pylint, ty and the pytest matrix run in parallel; `coverage` follows pytes
 | `setup` | | Bash run before `uv sync` in the pytest and lint jobs (system packages, `echo VAR=x >> "$GITHUB_ENV"`) |
 | `sync-args` | | Appended to `uv sync --locked` |
 | `ruff-group` | | Dependency group with a locked ruff; empty = latest ruff via `uvx` |
-| `pylint` | `false` | `true` = `pylint --recursive=y .`; any other string replaces the `.`, and a later `--recursive` overrides the default. The venv lives outside the checkout, so it's never linted. Locked pylint if any, else the latest |
+| `pylint` | `false` | `true` = `pylint --recursive=y .`; any other string replaces the `.`, and a later `--recursive` overrides the default. Its venv lives in the runner's temp directory, so it's never linted. Locked pylint if any, else the latest |
 | `ty` | `false` | `true` = `ty check`; any other string is appended as its arguments. Locked ty if any, else the latest |
 | `pytest` | `true` | `false` for repos without tests |
 | `pytest-args` | | |
