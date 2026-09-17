@@ -10,7 +10,9 @@ def test_setup_input_ran():
 
 
 def parity(n):
-    return "even" if n % 2 == 0 else "odd"
+    if n % 2:
+        return "odd"
+    return "even"
 
 
 def test_parity():
