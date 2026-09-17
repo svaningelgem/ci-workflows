@@ -6,7 +6,7 @@ on:
       runner:
         description: Runner label for the Linux jobs.
         type: string
-        default: ubuntu-latest
+        default: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
       windows:
         description: Also run pytest on a GitHub-hosted Windows runner.
         type: boolean
@@ -19,6 +19,14 @@ on:
         description: Dependency group holding a locked ruff; empty uses the latest ruff via `uvx`.
         type: string
         default: ''
+      pylint:
+        description: Arguments for `pylint` from the project's dependencies, e.g. `src/ --fail-under=10`; empty skips it.
+        type: string
+        default: ''
+      ty:
+        description: Arguments for `ty check` from the project's dependencies, e.g. `src/`; empty skips it.
+        type: string
+        default: ''
       python-versions:
         description: JSON list of Python versions for pytest; `[""]` uses the project's own pin.
         type: string
@@ -27,7 +35,7 @@ on:
         type: string
         default: .
       setup:
-        description: Bash run before `uv sync` in the pytest job, e.g. to install system packages or `echo VAR=x >> "$GITHUB_ENV"`.
+        description: Bash run before `uv sync` in the pytest and lint jobs, e.g. to install system packages or `echo VAR=x >> "$GITHUB_ENV"`.
         type: string
         default: ''
       sync-args:
@@ -77,6 +85,48 @@ jobs:
         if: steps.format.outcome == 'success' || steps.format.outcome == 'failure'
         run: ${{ inputs.ruff-group != '' && 'uv run --no-sync' || 'uvx' }} ruff check --no-fix .
 
+  lint:
+    if: inputs.pylint != '' || inputs.ty != ''
+    runs-on: ${{ inputs.runner }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: ${{ fromJSON(inputs.python-versions)[0] }}
+          working-directory: ${{ inputs.working-directory }}
+          enable-cache: true
+
+      - &setup
+        name: Setup
+        if: inputs.setup != ''
+        run: ${{ inputs.setup }}
+
+      # Env-scoped git config instead of `git config --global`, which would
+      # persist the token in the home directory of a self-hosted runner.
+      - &install
+        name: Install dependencies
+        id: install
+        env:
+          GIT_CONFIG_COUNT: ${{ secrets.GIT_TOKEN && '1' || '0' }}
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ secrets.GIT_TOKEN }}@github.com/.insteadOf
+          GIT_CONFIG_VALUE_0: https://github.com/
+        run: uv sync --locked ${{ inputs.sync-args }}
+
+      - name: pylint
+        if: inputs.pylint != ''
+        run: uv run --no-sync pylint ${{ inputs.pylint }}
+
+      - name: ty
+        if: inputs.ty != '' && !cancelled() && steps.install.outcome == 'success'
+        run: uv run --no-sync ty check ${{ inputs.ty }}
+
   pytest:
     if: inputs.pytest
     name: pytest (${{ matrix.os }}${{ matrix.python && format(', {0}', matrix.python) || '' }})
@@ -99,18 +149,9 @@ jobs:
           working-directory: ${{ inputs.working-directory }}
           enable-cache: true
 
-      - name: Setup
-        if: inputs.setup != ''
-        run: ${{ inputs.setup }}
+      - *setup
 
-      # Env-scoped git config instead of `git config --global`, which would
-      # persist the token in the home directory of a self-hosted runner.
-      - name: Install dependencies
-        env:
-          GIT_CONFIG_COUNT: ${{ secrets.GIT_TOKEN && '1' || '0' }}
-          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ secrets.GIT_TOKEN }}@github.com/.insteadOf
-          GIT_CONFIG_VALUE_0: https://github.com/
-        run: uv sync --locked ${{ inputs.sync-args }}
+      - *install
 
       - name: pytest
         run: >-
