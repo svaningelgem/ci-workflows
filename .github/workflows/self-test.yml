@@ -15,18 +15,21 @@ jobs:
 
   python:
     uses: ./.github/workflows/python.yml
+    permissions:
+      contents: read
+      pull-requests: write
     with:
       working-directory: tests/fixture
       windows: true
       macos: true
       python-versions: '["3.12", "3.14"]'
       setup: echo FIXTURE_SETUP=ran >> "$GITHUB_ENV"
-      pytest-args: --cov --cov-report=xml
-      patch-coverage: true
 
   python-ruff-group:
     uses: ./.github/workflows/python.yml
     with:
       working-directory: tests/fixture
       ruff-group: lint
+      pylint: . --fail-under=4
+      ty: true
       pytest: false

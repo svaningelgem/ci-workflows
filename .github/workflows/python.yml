@@ -6,7 +6,7 @@ on:
       runner:
         description: Runner label for the Linux jobs.
         type: string
-        default: ubuntu-latest
+        default: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
       windows:
         description: Also run pytest on a GitHub-hosted Windows runner.
         type: boolean
@@ -19,6 +19,18 @@ on:
         description: Dependency group holding a locked ruff; empty uses the latest ruff via `uvx`.
         type: string
         default: ''
+      pylint:
+        description: >-
+          `true` runs `pylint --recursive=y .`; any other string replaces the `.`, e.g. `src/ --fail-under=10`.
+          Uses the project's locked pylint if it has one.
+        type: string
+        default: 'false'
+      ty:
+        description: >-
+          `true` runs `ty check`; any other string is appended as its arguments, e.g. `src/`.
+          Uses the project's locked ty if it has one.
+        type: string
+        default: 'false'
       python-versions:
         description: JSON list of Python versions for pytest; `[""]` uses the project's own pin.
         type: string
@@ -27,7 +39,7 @@ on:
         type: string
         default: .
       setup:
-        description: Bash run before `uv sync` in the pytest job, e.g. to install system packages or `echo VAR=x >> "$GITHUB_ENV"`.
+        description: Bash run before `uv sync` in the pytest and lint jobs, e.g. to install system packages or `echo VAR=x >> "$GITHUB_ENV"`.
         type: string
         default: ''
       sync-args:
@@ -41,9 +53,9 @@ on:
         type: string
         default: ''
       patch-coverage:
-        description: On PRs, require 100% coverage of changed lines. Needs `--cov --cov-report=xml` in pytest-args.
-        type: boolean
-        default: false
+        description: Minimum coverage of the lines and branches a PR changes, merged across the matrix; 0 only reports.
+        type: number
+        default: 100
     secrets:
       CODECOV_TOKEN:
         required: false
@@ -51,14 +63,12 @@ on:
         description: Token for cloning private GitHub dependencies.
         required: false
 
-permissions:
-  contents: read
-
 jobs:
   ruff:
     runs-on: ${{ inputs.runner }}
-    defaults:
+    defaults: &defaults
       run:
+        shell: bash
         working-directory: ${{ inputs.working-directory }}
     steps:
       - uses: actions/checkout@v7
@@ -80,6 +90,57 @@ jobs:
         if: steps.format.outcome == 'success' || steps.format.outcome == 'failure'
         run: ${{ inputs.ruff-group != '' && 'uv run --no-sync' || 'uvx' }} ruff check --no-fix .
 
+  pylint:
+    if: inputs.pylint != 'false'
+    runs-on: ${{ inputs.runner }}
+    defaults: *defaults
+    steps:
+      - uses: actions/checkout@v7
+
+      - &setup-uv-lint
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: ${{ fromJSON(inputs.python-versions)[0] }}
+          working-directory: ${{ inputs.working-directory }}
+          enable-cache: true
+
+      - name: Keep the venv out of the tree pylint scans
+        run: echo "UV_PROJECT_ENVIRONMENT=$RUNNER_TEMP/venv" >> "$GITHUB_ENV"
+
+      - &setup
+        name: Setup
+        if: inputs.setup != ''
+        run: ${{ inputs.setup }}
+
+      # Env-scoped git config instead of `git config --global`, which would
+      # persist the token in the home directory of a self-hosted runner.
+      - &install
+        name: Install dependencies
+        env:
+          GIT_CONFIG_COUNT: ${{ secrets.GIT_TOKEN && '1' || '0' }}
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ secrets.GIT_TOKEN }}@github.com/.insteadOf
+          GIT_CONFIG_VALUE_0: https://github.com/
+        run: uv sync --locked ${{ inputs.sync-args }}
+
+      - name: pylint
+        run: uv run --no-sync --with pylint pylint --recursive=y ${{ inputs.pylint == 'true' && '.' || inputs.pylint }}
+
+  ty:
+    if: inputs.ty != 'false'
+    runs-on: ${{ inputs.runner }}
+    defaults: *defaults
+    steps:
+      - uses: actions/checkout@v7
+
+      - *setup-uv-lint
+
+      - *setup
+
+      - *install
+
+      - name: ty
+        run: uv run --no-sync --with ty ty check ${{ inputs.ty != 'true' && inputs.ty || '' }}
+
   pytest:
     if: inputs.pytest
     name: pytest (${{ matrix.os }}${{ matrix.python && format(', {0}', matrix.python) || '' }})
@@ -89,17 +150,9 @@ jobs:
         os: ${{ fromJSON(format('["{0}"{1}{2}]', inputs.runner, inputs.windows && ',"windows-latest"' || '', inputs.macos && ',"macos-latest"' || '')) }}
         python: ${{ fromJSON(inputs.python-versions) }}
     runs-on: ${{ matrix.os }}
-    env:
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-    defaults:
-      run:
-        shell: bash
-        working-directory: ${{ inputs.working-directory }}
+    defaults: *defaults
     steps:
       - uses: actions/checkout@v7
-        with:
-          # diff-cover compares against the base branch, which a shallow clone lacks.
-          fetch-depth: ${{ fromJSON(inputs.patch-coverage && '0' || '1') }}
 
       - uses: astral-sh/setup-uv@v7
         with:
@@ -107,39 +160,86 @@ jobs:
           working-directory: ${{ inputs.working-directory }}
           enable-cache: true
 
-      - name: Setup
-        if: inputs.setup != ''
-        run: ${{ inputs.setup }}
+      - *setup
 
-      # Env-scoped git config instead of `git config --global`, which would
-      # persist the token in the home directory of a self-hosted runner.
-      - name: Install dependencies
-        env:
-          GIT_CONFIG_COUNT: ${{ secrets.GIT_TOKEN && '1' || '0' }}
-          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ secrets.GIT_TOKEN }}@github.com/.insteadOf
-          GIT_CONFIG_VALUE_0: https://github.com/
-        run: uv sync --locked ${{ inputs.sync-args }}
+      - *install
 
       - name: pytest
-        run: uv run --no-sync pytest ${{ inputs.pytest-args }}
+        run: >-
+          uv run --no-sync --with pytest --with 'coverage[toml]>=7.13'
+          https://raw.githubusercontent.com/${{ job.workflow_repository }}/${{ job.workflow_sha }}/scripts/pytest_coverage.py
+          ${{ inputs.pytest-args }}
+
+      - name: Upload coverage data
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-${{ matrix.os }}-${{ matrix.python }}
+          path: |
+            ${{ inputs.working-directory }}/.coverage.*
+            ${{ inputs.working-directory }}/coverage-root
+          include-hidden-files: true
+
+  coverage:
+    needs: pytest
+    if: ${{ !cancelled() && inputs.pytest }}
+    runs-on: ${{ inputs.runner }}
+    env:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+    defaults: *defaults
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          working-directory: ${{ inputs.working-directory }}
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: coverage-*
+          path: ${{ inputs.working-directory }}/.coverage-legs
+
+      - name: Combine coverage
+        id: combine
+        run: uv run https://raw.githubusercontent.com/${{ job.workflow_repository }}/${{ job.workflow_sha }}/scripts/combine_coverage.py
 
       - name: Patch coverage
         id: patch_coverage
-        if: inputs.patch-coverage && github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request'
         run: >-
-          uvx diff-cover coverage.xml
+          uvx 'diff-cover>=10.4' coverage.xml
           --compare-branch=origin/${{ github.base_ref }}
-          --fail-under=100
+          --branch-coverage
+          --fail-under=${{ inputs.patch-coverage }}
           --format markdown:patch-coverage.md
 
       - name: Publish patch coverage report
         if: always() && steps.patch_coverage.outcome != 'skipped'
-        run: cat patch-coverage.md >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          sed -i -e '/^## Diff: /d' -e 's/^#/##/' patch-coverage.md
+          cat patch-coverage.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comment patch coverage on PR
+        if: always() && steps.patch_coverage.outcome != 'skipped'
+        continue-on-error: true
+        uses: marocchino/sticky-pull-request-comment@v3.0.5
+        with:
+          header: patch-coverage
+          path: ${{ inputs.working-directory }}/patch-coverage.md
 
       - name: Upload coverage to Codecov
-        if: always() && env.CODECOV_TOKEN != '' && hashFiles(format('{0}/coverage.xml', inputs.working-directory)) != ''
+        if: always() && env.CODECOV_TOKEN != '' && steps.combine.outcome == 'success'
         uses: codecov/codecov-action@v7
         with:
           token: ${{ env.CODECOV_TOKEN }}
           files: ${{ inputs.working-directory }}/coverage.xml
-          flags: ${{ runner.os }}
+
+  result:
+    needs: [ruff, pylint, ty, pytest, coverage]
+    if: ${{ !cancelled() }}
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1

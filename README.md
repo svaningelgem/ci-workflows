@@ -4,7 +4,30 @@ Shared GitHub Actions workflows. Change them here once instead of in every repo.
 
 ## Python
 
-`ruff format --check` + `ruff check --no-fix` (latest ruff via `uvx`, or a locked one with `ruff-group`) and `pytest` after `uv sync --locked`.
+`ruff format --check` + `ruff check --no-fix` (latest ruff via `uvx`, or a locked one with `ruff-group`), optional pylint and ty, and `pytest` after `uv sync --locked`, with patch coverage merged across the matrix.
+
+### Minimal
+
+```yaml
+name: Python
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write  # patch-coverage PR comment
+
+jobs:
+  python:
+    uses: svaningelgem/ci-workflows/.github/workflows/python.yml@v1
+```
+
+### Exhaustive
+
+Every input set; the values are examples.
 
 ```yaml
 name: Python
@@ -18,28 +41,49 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+permissions:
+  contents: read
+  pull-requests: write  # patch-coverage PR comment
+
 jobs:
   python:
     uses: svaningelgem/ci-workflows/.github/workflows/python.yml@v1
     with:
-      runner: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}  # private orgs only; public repos leave this out
+      runner: ubuntu-24.04
+      windows: true
+      macos: true
+      python-versions: '["3.12", "3.14"]'
+      working-directory: backend
+      setup: echo PYTHONPATH=src >> "$GITHUB_ENV"
+      sync-args: --all-extras
+      ruff-group: lint
+      pylint: src/ --fail-under=10
+      ty: true
+      pytest: true
+      pytest-args: -n auto
+      patch-coverage: 90
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      GIT_TOKEN: ${{ secrets.PRIVATE_DEPS_PAT }}
 ```
+
+ruff, pylint, ty and the pytest matrix run in parallel; `coverage` follows pytest, and `result` fails if any job failed, so make `result` the required status check.
 
 | Input | Default | |
 |---|---|---|
-| `runner` | `ubuntu-latest` | Runner for the Linux jobs |
+| `runner` | `vars.RUNNER_LABEL \|\| 'ubuntu-latest'` | Runner for the Linux jobs; `RUNNER_LABEL` is read from the calling repo |
 | `windows` / `macos` | `false` | Extra pytest legs on GitHub-hosted runners |
-| `ruff-group` | | Dependency group with a locked ruff; empty = latest ruff via `uvx` |
-| `python-versions` | `[""]` | JSON list; `""` uses the project's own Python pin |
+| `python-versions` | `[""]` | JSON list; `""` uses the project's own Python pin. `pylint`/`ty` use the first |
 | `working-directory` | `.` | |
-| `setup` | | Bash run before `uv sync` in the pytest job (system packages, `echo VAR=x >> "$GITHUB_ENV"`) |
+| `setup` | | Bash run before `uv sync` in the pytest and lint jobs (system packages, `echo VAR=x >> "$GITHUB_ENV"`) |
 | `sync-args` | | Appended to `uv sync --locked` |
+| `ruff-group` | | Dependency group with a locked ruff; empty = latest ruff via `uvx` |
+| `pylint` | `false` | `true` = `pylint --recursive=y .`; any other string replaces the `.`, and a later `--recursive` overrides the default. Its venv lives in the runner's temp directory, so it's never linted. Locked pylint if any, else the latest |
+| `ty` | `false` | `true` = `ty check`; any other string is appended as its arguments. Locked ty if any, else the latest |
 | `pytest` | `true` | `false` for repos without tests |
 | `pytest-args` | | |
-| `patch-coverage` | `false` | PRs must cover 100% of changed lines; needs `--cov --cov-report=xml` |
+| `patch-coverage` | `100` | Minimum % of changed lines and branches covered, merged across the matrix; `0` only reports. Posted as a PR comment when the caller grants `pull-requests: write` |
 
-Secrets (passed explicitly, `secrets: inherit` doesn't cross owners): `CODECOV_TOKEN` uploads `coverage.xml` when present, `GIT_TOKEN` clones private GitHub dependencies.
+Secrets (passed explicitly, `secrets: inherit` doesn't cross owners): `CODECOV_TOKEN` uploads the merged coverage, `GIT_TOKEN` clones private GitHub dependencies.
 
 Releases: tag `vX.Y.Z` and move `v1` along.
