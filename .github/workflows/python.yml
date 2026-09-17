@@ -225,8 +225,9 @@ jobs:
           sed -i -e '/^## Diff: /d' -e 's/^#/##/' patch-coverage.md
           cat patch-coverage.md >> "$GITHUB_STEP_SUMMARY"
 
+      # Codecov posts its own PR comment; don't add a second one.
       - name: Comment patch coverage on PR
-        if: always() && steps.patch_coverage.outcome != 'skipped'
+        if: always() && steps.patch_coverage.outcome != 'skipped' && env.CODECOV_TOKEN == ''
         continue-on-error: true
         uses: marocchino/sticky-pull-request-comment@v3.0.5
         with:
