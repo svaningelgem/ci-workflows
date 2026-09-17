@@ -53,7 +53,7 @@ on:
         type: string
         default: ''
       patch-coverage:
-        description: Minimum coverage of the lines and branches a PR changes, merged across the matrix; 0 only reports.
+        description: Minimum coverage of what a PR changes (a changed line counts once, each branch on it once more), merged across the matrix; 0 only reports.
         type: number
         default: 100
       total-coverage:
@@ -213,17 +213,12 @@ jobs:
         id: patch_coverage
         if: github.event_name == 'pull_request'
         run: >-
-          uvx 'diff-cover>=10.4' coverage.xml
-          --compare-branch=origin/${{ github.base_ref }}
-          --branch-coverage
-          --fail-under=${{ inputs.patch-coverage }}
-          --format markdown:patch-coverage.md
+          uv run https://raw.githubusercontent.com/${{ job.workflow_repository }}/${{ job.workflow_sha }}/scripts/patch_report.py
+          --base origin/${{ github.base_ref }} --min ${{ inputs.patch-coverage }}
 
       - name: Publish patch coverage report
         if: always() && steps.patch_coverage.outcome != 'skipped'
-        run: |
-          sed -i -e '/^## Diff: /d' -e 's/^#/##/' patch-coverage.md
-          cat patch-coverage.md >> "$GITHUB_STEP_SUMMARY"
+        run: cat patch-coverage.md >> "$GITHUB_STEP_SUMMARY"
 
       # Codecov posts its own PR comment; don't add a second one.
       - name: Comment patch coverage on PR
