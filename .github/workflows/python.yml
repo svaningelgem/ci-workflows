@@ -131,7 +131,7 @@ jobs:
       - name: pytest
         if: inputs.patch-coverage > 0
         run: |
-          uv run --no-sync --with 'coverage>=7.13' python - ${{ inputs.pytest-args }} <<'EOF'
+          uv run --no-sync --with 'coverage[toml]>=7.13' python - ${{ inputs.pytest-args }} <<'EOF'
           import importlib.util
           import os
           import sys
