@@ -42,12 +42,10 @@ on:
         default: ''
       patch-coverage:
         description: >-
-          Percentage of changed lines and branches PRs must cover (0 = off), posted as a PR comment.
-          pytest runs under `coverage run`, merged across the matrix, so leave `--cov` out of pytest-args.
-          With pytest-xdist, set `[tool.coverage.run] patch = ["subprocess"]`.
-          Needs `pull-requests: write` granted by the caller.
+          Percentage of changed lines and branches a PR must cover, merged across the matrix; 0 turns coverage off.
+          The report is posted as a PR comment when the caller grants `pull-requests: write`.
         type: number
-        default: 0
+        default: 100
     secrets:
       CODECOV_TOKEN:
         required: false
@@ -123,13 +121,37 @@ jobs:
           GIT_CONFIG_VALUE_0: https://github.com/
         run: uv sync --locked ${{ inputs.sync-args }}
 
-      # Each leg checks out to a different path; the coverage job maps them onto one.
-      - name: Record coverage root
-        if: inputs.patch-coverage > 0
-        run: uv run --no-sync python -c "import os; print(os.getcwd())" > coverage-root
-
       - name: pytest
-        run: uv run --no-sync ${{ inputs.patch-coverage > 0 && '--with coverage coverage run --branch --parallel-mode -m' || '' }} pytest ${{ inputs.pytest-args }}
+        if: inputs.patch-coverage == 0
+        run: uv run --no-sync pytest ${{ inputs.pytest-args }}
+
+      # Like `coverage run -m pytest`, but needs no coverage config from the caller: it also
+      # measures subprocesses (pytest-xdist workers) and switches pytest-cov off.
+      # coverage-root: each leg checks out to a different path, the coverage job maps them onto one.
+      - name: pytest
+        if: inputs.patch-coverage > 0
+        run: |
+          uv run --no-sync --with 'coverage>=7.13' python - ${{ inputs.pytest-args }} <<'EOF'
+          import importlib.util
+          import os
+          import sys
+
+          import coverage
+
+          print(os.getcwd(), file=open("coverage-root", "w"))
+          cov = coverage.Coverage()
+          cov.set_option("run:branch", True)
+          cov.set_option("run:parallel", True)
+          cov.set_option("run:disable_warnings", ["no-data-collected"])
+          os.environ["COVERAGE_PROCESS_CONFIG"] = cov.config.serialize()
+          cov.start()
+          import pytest
+
+          exit_code = pytest.main(sys.argv[1:] + (["--no-cov"] if importlib.util.find_spec("pytest_cov") else []))
+          cov.stop()
+          cov.save()
+          sys.exit(exit_code)
+          EOF
 
       - name: Upload coverage data
         if: inputs.patch-coverage > 0 && !cancelled()
@@ -205,8 +227,10 @@ jobs:
           sed -i -e '/^## Diff: /d' -e 's/^#/##/' patch-coverage.md
           cat patch-coverage.md >> "$GITHUB_STEP_SUMMARY"
 
+      # Without `pull-requests: write` (or on fork PRs) this fails; the gate and step summary still stand.
       - name: Comment patch coverage on PR
         if: always() && steps.patch_coverage.outcome != 'skipped'
+        continue-on-error: true
         uses: marocchino/sticky-pull-request-comment@v3.0.5
         with:
           header: patch-coverage
