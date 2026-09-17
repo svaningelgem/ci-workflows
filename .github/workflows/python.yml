@@ -41,9 +41,7 @@ on:
         type: string
         default: ''
       patch-coverage:
-        description: >-
-          Percentage of changed lines and branches a PR must cover, merged across the matrix; 0 turns coverage off.
-          The report is posted as a PR comment when the caller grants `pull-requests: write`.
+        description: Minimum coverage of the lines and branches a PR changes, merged across the matrix; 0 only reports.
         type: number
         default: 100
     secrets:
@@ -88,8 +86,6 @@ jobs:
         os: ${{ fromJSON(format('["{0}"{1}{2}]', inputs.runner, inputs.windows && ',"windows-latest"' || '', inputs.macos && ',"macos-latest"' || '')) }}
         python: ${{ fromJSON(inputs.python-versions) }}
     runs-on: ${{ matrix.os }}
-    env:
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     defaults:
       run:
         shell: bash
@@ -117,19 +113,13 @@ jobs:
         run: uv sync --locked ${{ inputs.sync-args }}
 
       - name: pytest
-        if: inputs.patch-coverage == 0
-        run: uv run --no-sync --with pytest pytest ${{ inputs.pytest-args }}
-
-      # `--with` uses the project's locked pytest/coverage when it has them.
-      - name: pytest
-        if: inputs.patch-coverage > 0
         run: >-
           uv run --no-sync --with pytest --with 'coverage[toml]>=7.13'
           https://raw.githubusercontent.com/${{ job.workflow_repository }}/${{ job.workflow_sha }}/scripts/pytest_coverage.py
           ${{ inputs.pytest-args }}
 
       - name: Upload coverage data
-        if: inputs.patch-coverage > 0 && !cancelled()
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
           name: coverage-${{ matrix.os }}-${{ matrix.python }}
@@ -138,17 +128,9 @@ jobs:
             ${{ inputs.working-directory }}/coverage-root
           include-hidden-files: true
 
-      - name: Upload coverage to Codecov
-        if: always() && env.CODECOV_TOKEN != '' && hashFiles(format('{0}/coverage.xml', inputs.working-directory)) != ''
-        uses: codecov/codecov-action@v7
-        with:
-          token: ${{ env.CODECOV_TOKEN }}
-          files: ${{ inputs.working-directory }}/coverage.xml
-          flags: ${{ runner.os }}
-
   coverage:
     needs: pytest
-    if: ${{ !cancelled() && inputs.pytest && inputs.patch-coverage > 0 }}
+    if: ${{ !cancelled() && inputs.pytest }}
     runs-on: ${{ inputs.runner }}
     env:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
@@ -159,7 +141,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # diff-cover compares against the base branch, which a shallow clone lacks.
           fetch-depth: 0
 
       - uses: astral-sh/setup-uv@v7
@@ -191,7 +172,6 @@ jobs:
           sed -i -e '/^## Diff: /d' -e 's/^#/##/' patch-coverage.md
           cat patch-coverage.md >> "$GITHUB_STEP_SUMMARY"
 
-      # Without `pull-requests: write` (or on fork PRs) this fails; the gate and step summary still stand.
       - name: Comment patch coverage on PR
         if: always() && steps.patch_coverage.outcome != 'skipped'
         continue-on-error: true

@@ -1,5 +1,5 @@
 paths:
   .github/workflows/python.yml:
     ignore:
-      # job.workflow_repository / job.workflow_sha (September 2026) aren't known to actionlint yet.
+      # not in actionlint yet
       - 'property "workflow_(repository|sha)" is not defined'

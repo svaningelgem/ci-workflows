@@ -38,8 +38,8 @@ jobs:
 | `sync-args` | | Appended to `uv sync --locked` |
 | `pytest` | `true` | `false` for repos without tests |
 | `pytest-args` | | |
-| `patch-coverage` | `100` | % of changed lines and branches a PR must cover, merged across the matrix; `0` turns coverage off. Posted as a sticky PR comment when the calling job grants `pull-requests: write` |
+| `patch-coverage` | `100` | Minimum % of changed lines and branches covered, merged across the matrix; `0` only reports. Posted as a PR comment when the caller grants `pull-requests: write` |
 
-Secrets (passed explicitly, `secrets: inherit` doesn't cross owners): `CODECOV_TOKEN` uploads the merged coverage (with `patch-coverage: 0`, each leg's `coverage.xml` when present), `GIT_TOKEN` clones private GitHub dependencies.
+Secrets (passed explicitly, `secrets: inherit` doesn't cross owners): `CODECOV_TOKEN` uploads the merged coverage, `GIT_TOKEN` clones private GitHub dependencies.
 
 Releases: tag `vX.Y.Z` and move `v1` along.
