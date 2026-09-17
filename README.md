@@ -68,7 +68,7 @@ jobs:
       GIT_TOKEN: ${{ secrets.PRIVATE_DEPS_PAT }}
 ```
 
-ruff, pylint, ty and the pytest matrix run in parallel; `coverage` follows pytest, and `result` fails if any job failed, so make `result` the required status check. The merged `coverage.xml` is uploaded as the `merged-coverage` artifact for later jobs, e.g. a Sonar scan with `needs: python`.
+ruff, pylint, ty, the pytest matrix and (on pull requests) a Conventional Commits check of the PR title run in parallel; `coverage` follows pytest, and `result` fails if any job failed, so make `result` the required status check. The merged `coverage.xml` is uploaded as the `merged-coverage` artifact for later jobs, e.g. a Sonar scan with `needs: python`.
 
 | Input | Default | |
 |---|---|---|
