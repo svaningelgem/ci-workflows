@@ -42,10 +42,12 @@ on:
         default: ''
       patch-coverage:
         description: >-
-          On PRs, require 100% line and branch coverage of changed lines and post it as a PR comment.
-          Needs `--cov --cov-report=xml` in pytest-args and `pull-requests: write` granted by the caller.
-        type: boolean
-        default: false
+          Percentage of changed lines and branches PRs must cover (0 = off), posted as a PR comment.
+          pytest runs under `coverage run`, merged across the matrix, so leave `--cov` out of pytest-args.
+          With pytest-xdist, set `[tool.coverage.run] patch = ["subprocess"]`.
+          Needs `pull-requests: write` granted by the caller.
+        type: number
+        default: 0
     secrets:
       CODECOV_TOKEN:
         required: false
@@ -53,7 +55,7 @@ on:
         description: Token for cloning private GitHub dependencies.
         required: false
 
-# No workflow-level permissions: pytest inherits the caller's token, so only callers that
+# No workflow-level permissions: jobs inherit the caller's token, so only callers that
 # want the patch-coverage comment grant `pull-requests: write`. Requesting it here would
 # fail every caller that doesn't.
 jobs:
@@ -101,9 +103,6 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
     steps:
       - uses: actions/checkout@v7
-        with:
-          # diff-cover compares against the base branch, which a shallow clone lacks.
-          fetch-depth: ${{ fromJSON(inputs.patch-coverage && '0' || '1') }}
 
       - uses: astral-sh/setup-uv@v7
         with:
@@ -124,30 +123,23 @@ jobs:
           GIT_CONFIG_VALUE_0: https://github.com/
         run: uv sync --locked ${{ inputs.sync-args }}
 
+      # Each leg checks out to a different path; the coverage job maps them onto one.
+      - name: Record coverage root
+        if: inputs.patch-coverage > 0
+        run: uv run --no-sync python -c "import os; print(os.getcwd())" > coverage-root
+
       - name: pytest
-        run: uv run --no-sync pytest ${{ inputs.pytest-args }}
+        run: uv run --no-sync ${{ inputs.patch-coverage > 0 && '--with coverage coverage run --branch --parallel-mode -m' || '' }} pytest ${{ inputs.pytest-args }}
 
-      - name: Patch coverage
-        id: patch_coverage
-        if: inputs.patch-coverage && github.event_name == 'pull_request'
-        run: >-
-          uvx 'diff-cover>=10.4' coverage.xml
-          --compare-branch=origin/${{ github.base_ref }}
-          --branch-coverage
-          --fail-under=100
-          --format markdown:patch-coverage.md
-
-      - name: Publish patch coverage report
-        if: always() && steps.patch_coverage.outcome != 'skipped'
-        run: cat patch-coverage.md >> "$GITHUB_STEP_SUMMARY"
-
-      # ponytail: one comment per PR, so matrix legs overwrite each other; add the leg to `header` if they ever diverge.
-      - name: Comment patch coverage on PR
-        if: always() && steps.patch_coverage.outcome != 'skipped'
-        uses: marocchino/sticky-pull-request-comment@v3.0.5
+      - name: Upload coverage data
+        if: inputs.patch-coverage > 0 && !cancelled()
+        uses: actions/upload-artifact@v7
         with:
-          header: patch-coverage
-          path: ${{ inputs.working-directory }}/patch-coverage.md
+          name: coverage-${{ matrix.os }}-${{ matrix.python }}
+          path: |
+            ${{ inputs.working-directory }}/.coverage.*
+            ${{ inputs.working-directory }}/coverage-root
+          include-hidden-files: true
 
       - name: Upload coverage to Codecov
         if: always() && env.CODECOV_TOKEN != '' && hashFiles(format('{0}/coverage.xml', inputs.working-directory)) != ''
@@ -156,3 +148,72 @@ jobs:
           token: ${{ env.CODECOV_TOKEN }}
           files: ${{ inputs.working-directory }}/coverage.xml
           flags: ${{ runner.os }}
+
+  coverage:
+    needs: pytest
+    if: ${{ !cancelled() && inputs.pytest && inputs.patch-coverage > 0 }}
+    runs-on: ${{ inputs.runner }}
+    env:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # diff-cover compares against the base branch, which a shallow clone lacks.
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          working-directory: ${{ inputs.working-directory }}
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: coverage-*
+          path: ${{ inputs.working-directory }}/.coverage-legs
+
+      - name: Combine coverage
+        id: combine
+        shell: uv run --no-project --with coverage python {0}
+        run: |
+          from pathlib import Path
+
+          import coverage
+
+          legs = list(Path(".coverage-legs").iterdir())
+          cov = coverage.Coverage()
+          cov.set_option("paths", {"legs": [".", *(leg.joinpath("coverage-root").read_text().strip() for leg in legs)]})
+          cov.combine([str(leg) for leg in legs], strict=True)
+          cov.xml_report(outfile="coverage.xml")
+
+      - name: Patch coverage
+        id: patch_coverage
+        if: github.event_name == 'pull_request'
+        run: >-
+          uvx 'diff-cover>=10.4' coverage.xml
+          --compare-branch=origin/${{ github.base_ref }}
+          --branch-coverage
+          --fail-under=${{ inputs.patch-coverage }}
+          --format markdown:patch-coverage.md
+
+      - name: Publish patch coverage report
+        if: always() && steps.patch_coverage.outcome != 'skipped'
+        run: |
+          sed -i -e '/^## Diff: /d' -e 's/^#/##/' patch-coverage.md
+          cat patch-coverage.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comment patch coverage on PR
+        if: always() && steps.patch_coverage.outcome != 'skipped'
+        uses: marocchino/sticky-pull-request-comment@v3.0.5
+        with:
+          header: patch-coverage
+          path: ${{ inputs.working-directory }}/patch-coverage.md
+
+      - name: Upload coverage to Codecov
+        if: always() && env.CODECOV_TOKEN != '' && steps.combine.outcome == 'success'
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ env.CODECOV_TOKEN }}
+          files: ${{ inputs.working-directory }}/coverage.xml

@@ -38,7 +38,7 @@ jobs:
 | `sync-args` | | Appended to `uv sync --locked` |
 | `pytest` | `true` | `false` for repos without tests |
 | `pytest-args` | | |
-| `patch-coverage` | `false` | PRs must cover 100% of changed lines and branches, reported in a sticky PR comment; needs `--cov --cov-report=xml` and `pull-requests: write` on the calling job |
+| `patch-coverage` | `0` | % of changed lines and branches a PR must cover (0 = off), reported in a sticky PR comment. pytest runs under `coverage run`, merged across the matrix: leave `--cov` out of `pytest-args`, set `[tool.coverage.run] patch = ["subprocess"]` with pytest-xdist, and grant `pull-requests: write` on the calling job |
 
 Secrets (passed explicitly, `secrets: inherit` doesn't cross owners): `CODECOV_TOKEN` uploads `coverage.xml` when present, `GIT_TOKEN` clones private GitHub dependencies.
 
