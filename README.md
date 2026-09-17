@@ -83,7 +83,7 @@ ruff, pylint, ty, the pytest matrix and (on pull requests) a Conventional Commit
 | `ty` | `false` | `true` = `ty check`; any other string is appended as its arguments. Locked ty if any, else the latest |
 | `pytest` | `true` | `false` for repos without tests |
 | `pytest-args` | | |
-| `patch-coverage` | `100` | Minimum % of changed lines and branches covered, merged across the matrix; `0` only reports. Posted as a PR comment when the caller grants `pull-requests: write` and no `CODECOV_TOKEN` is passed (Codecov comments itself) |
+| `patch-coverage` | `100` | Minimum coverage of what a PR changes, merged across the matrix; `0` only reports. A changed line counts once and each branch on it once more, so a half-taken `if` costs half a point. Posted as a PR comment when the caller grants `pull-requests: write` and no `CODECOV_TOKEN` is passed (Codecov comments itself) |
 | `total-coverage` | `0` | Minimum total % of the merged coverage; `0` leaves it to the project's `[tool.coverage.report] fail_under` |
 
 Secrets (passed explicitly, `secrets: inherit` doesn't cross owners): `CODECOV_TOKEN` uploads the merged coverage, `GIT_TOKEN` clones private GitHub dependencies.
