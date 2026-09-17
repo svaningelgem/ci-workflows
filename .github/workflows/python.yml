@@ -127,7 +127,7 @@ jobs:
 
       # Like `coverage run -m pytest`, but needs no coverage config from the caller: it also
       # measures subprocesses (pytest-xdist workers) and switches pytest-cov off.
-      # coverage-root: each leg checks out to a different path, the coverage job maps them onto one.
+      # Paths are recorded absolute; the coverage job maps each leg's coverage-root onto its checkout.
       - name: pytest
         if: inputs.patch-coverage > 0
         run: |
@@ -142,6 +142,7 @@ jobs:
           cov = coverage.Coverage()
           cov.set_option("run:branch", True)
           cov.set_option("run:parallel", True)
+          cov.set_option("run:relative_files", False)
           cov.set_option("run:disable_warnings", ["no-data-collected"])
           os.environ["COVERAGE_PROCESS_CONFIG"] = cov.config.serialize()
           cov.start()
