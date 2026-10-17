@@ -22,7 +22,7 @@ jobs:
       working-directory: tests/fixture
       windows: true
       macos: true
-      python-versions: '["3.12", "3.14"]'
+      python-versions: '["3.12", "3.14", "3.15"]'
       setup: echo FIXTURE_SETUP=ran >> "$GITHUB_ENV"
       total-coverage: 100
 
