@@ -1,0 +1,164 @@
+name: Java
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: Runner label.
+        type: string
+        default: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+      java-version:
+        description: Temurin JDK(s) for actions/setup-java, one per line; the last is the default `java`.
+        type: string
+        default: '21'
+      working-directory:
+        type: string
+        default: .
+      paths:
+        description: >-
+          Git glob pathspecs (repo root, one per line, `!` excludes) whose changes need a build.
+          A pull request touching none of them skips the build; other events always build.
+        type: string
+        default: |
+          **/*.java
+          **/*.kt
+          **/*.kts
+          **/*.gradle
+          **/gradle.properties
+          **/gradle/**
+          **/gradlew*
+          **/pom.xml
+          **/.mvn/**
+          **/mvnw*
+          **/src/main/**
+          **/src/test/**
+          .github/workflows/**
+      fetch-depth:
+        description: Commits to fetch for the build; 0 is the full history (e.g. for Sonar or version-from-tag plugins).
+        type: number
+        default: 1
+      setup:
+        description: Bash run before the build, e.g. to install dependencies into `~/.m2`. uv is available.
+        type: string
+        default: ''
+      command:
+        description: Build command; empty runs `./gradlew build`, `./mvnw -B verify` or `mvn -B verify`, whichever the project has.
+        type: string
+        default: ''
+      pr-title:
+        description: Check that the PR title is a Conventional Commits title; switch off when another workflow already does.
+        type: boolean
+        default: true
+    secrets:
+      CODECOV_TOKEN:
+        required: false
+      SONAR_TOKEN:
+        description: Passed to the build as `SONAR_TOKEN`.
+        required: false
+
+jobs:
+  changes:
+    runs-on: ${{ inputs.runner }}
+    outputs:
+      build: ${{ steps.diff.outputs.build }}
+    steps:
+      - uses: actions/checkout@v7
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 0
+          filter: blob:none
+
+      - name: Java changes
+        id: diff
+        env:
+          PATHS: ${{ inputs.paths }}
+          BASE: ${{ github.base_ref }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
+            echo build=true >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          specs=()
+          while IFS= read -r p; do
+            case $p in
+              '') ;;
+              '!'*) specs+=(":(glob,exclude)${p#!}") ;;
+              *) specs+=(":(glob)$p") ;;
+            esac
+          done <<< "$PATHS"
+          changed=$(git diff --name-only "origin/$BASE...HEAD" -- "${specs[@]}")
+          printf '%s\n' "$changed"
+          echo "build=$([ -n "$changed" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: changes
+    if: needs.changes.outputs.build == 'true'
+    runs-on: ${{ inputs.runner }}
+    env:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: ${{ inputs.fetch-depth }}
+
+      - name: Build tool
+        id: tool
+        run: |
+          if [ -f gradlew ]; then tool=gradle; command='./gradlew build'
+          elif [ -f mvnw ]; then tool=maven; command='./mvnw -B --ntp verify'
+          elif [ -f pom.xml ]; then tool=maven; command='mvn -B --ntp verify'
+          else echo "::error::No gradlew or pom.xml in ${{ inputs.working-directory }}"; exit 1
+          fi
+          echo "tool=$tool" >> "$GITHUB_OUTPUT"
+          echo "command=$command" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: ${{ inputs.java-version }}
+          cache: ${{ steps.tool.outputs.tool == 'maven' && 'maven' || '' }}
+
+      - uses: gradle/actions/setup-gradle@v6
+        if: steps.tool.outputs.tool == 'gradle'
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Setup
+        if: inputs.setup != ''
+        run: ${{ inputs.setup }}
+
+      - name: Build
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: ${{ inputs.command || steps.tool.outputs.command }}
+
+      - name: Upload coverage to Codecov
+        if: ${{ !cancelled() && env.CODECOV_TOKEN != '' }}
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ env.CODECOV_TOKEN }}
+
+  pr-title:
+    if: github.event_name == 'pull_request' && inputs.pr-title
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - name: Conventional Commits title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if ! printf '%s\n' "$TITLE" | grep -Eq '^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([^)]+\))?!?: .+'; then
+            echo "::error::PR title is not a Conventional Commits title (e.g. 'fix(parser): handle empty input'): $TITLE"
+            exit 1
+          fi
+
+  result:
+    needs: [changes, build, pr-title]
+    if: ${{ !cancelled() }}
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1

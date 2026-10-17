@@ -88,4 +88,41 @@ ruff, pylint, ty, the pytest matrix and (on pull requests) a Conventional Commit
 
 Secrets (passed explicitly, `secrets: inherit` doesn't cross owners): `CODECOV_TOKEN` uploads the merged coverage, `GIT_TOKEN` clones private GitHub dependencies.
 
+## Java
+
+Gradle or Maven build on Temurin, skipped on pull requests that touch no Java files.
+
+```yaml
+name: Java
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  java:
+    uses: svaningelgem/ci-workflows/.github/workflows/java.yml@v1
+    with:
+      java-version: '25'
+```
+
+`changes` diffs a pull request against its base with the `paths` pathspecs; when nothing matches, `build` is skipped and `result` still passes, so `result` can be the required check. `build` runs `./gradlew build` (with `gradle/actions/setup-gradle`), `./mvnw -B verify` or `mvn -B verify` (with the Maven cache), whichever the project has.
+
+| Input | Default | |
+|---|---|---|
+| `runner` | `vars.RUNNER_LABEL \|\| 'ubuntu-latest'` | |
+| `java-version` | `21` | One per line for several JDKs (`JAVA_HOME_<v>_X64` each); the last is the default |
+| `working-directory` | `.` | |
+| `paths` | Java/Kotlin sources, Gradle and Maven files, `src/main`, `src/test`, `.github/workflows` | Git glob pathspecs from the repo root, one per line; `!` excludes |
+| `fetch-depth` | `1` | `0` for the full history (Sonar, version-from-tag plugins) |
+| `setup` | | Bash run before the build; uv is installed |
+| `command` | | Replaces the default build command |
+| `pr-title` | `true` | Conventional Commits check of the PR title; `false` when `python.yml` already runs it |
+
+Secrets: `CODECOV_TOKEN` uploads coverage after the build, `SONAR_TOKEN` is exported to the build.
+
 Releases: tag `vX.Y.Z` and move `v1` along.
