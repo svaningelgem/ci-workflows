@@ -86,7 +86,7 @@ ruff, pylint, ty, the pytest matrix and (on pull requests) a Conventional Commit
 | `patch-coverage` | `100` | Minimum coverage of what a PR changes, merged across the matrix; `0` only reports. A changed line counts once and each branch on it once more, so a half-taken `if` costs half a point. Posted as a PR comment when the caller grants `pull-requests: write` and no `CODECOV_TOKEN` is passed (Codecov comments itself) |
 | `total-coverage` | `0` | Minimum total % of the merged coverage; `0` leaves it to the project's `[tool.coverage.report] fail_under` |
 
-Secrets (passed explicitly, `secrets: inherit` doesn't cross owners): `CODECOV_TOKEN` uploads the merged coverage, `GIT_TOKEN` clones private GitHub dependencies.
+Secrets (passed explicitly, `secrets: inherit` doesn't cross owners): `CODECOV_TOKEN` uploads the merged coverage, `GIT_TOKEN` clones private GitHub dependencies, `SSH_KEY` does the same with an SSH key instead (e.g. a read-only deploy key on the dependency) and wins when both are set.
 
 ## Java
 
