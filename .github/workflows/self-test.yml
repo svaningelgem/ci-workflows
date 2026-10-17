@@ -34,3 +34,9 @@ jobs:
       pylint: . --fail-under=4
       ty: true
       pytest: false
+
+  java:
+    uses: ./.github/workflows/java.yml
+    with:
+      working-directory: tests/java-fixture
+      pr-title: false
