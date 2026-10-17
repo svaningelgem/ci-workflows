@@ -66,6 +66,9 @@ on:
       GIT_TOKEN:
         description: Token for cloning private GitHub dependencies.
         required: false
+      SSH_KEY:
+        description: Private SSH key (e.g. a read-only deploy key) for cloning private GitHub dependencies; wins over GIT_TOKEN.
+        required: false
 
 jobs:
   ruff:
@@ -116,15 +119,23 @@ jobs:
         if: inputs.setup != ''
         run: ${{ inputs.setup }}
 
-      # Env-scoped git config instead of `git config --global`, which would
-      # persist the token in the home directory of a self-hosted runner.
+      # Env-scoped git config and a key file in the job's temp dir instead of `git config --global`
+      # or ~/.ssh, which would persist the credentials on a self-hosted runner.
       - &install
         name: Install dependencies
         env:
-          GIT_CONFIG_COUNT: ${{ secrets.GIT_TOKEN && '1' || '0' }}
-          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ secrets.GIT_TOKEN }}@github.com/.insteadOf
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          GIT_CONFIG_COUNT: ${{ (secrets.SSH_KEY || secrets.GIT_TOKEN) && '1' || '0' }}
+          GIT_CONFIG_KEY_0: ${{ secrets.SSH_KEY && 'url.git@github.com:.insteadOf' || format('url.https://x-access-token:{0}@github.com/.insteadOf', secrets.GIT_TOKEN) }}
           GIT_CONFIG_VALUE_0: https://github.com/
-        run: uv sync --locked ${{ inputs.sync-args }}
+        run: |
+          if [ -n "$SSH_KEY" ]; then
+            trap 'rm -f "$RUNNER_TEMP/ssh_key"' EXIT
+            (umask 077 && printf '%s\n' "$SSH_KEY" > "$RUNNER_TEMP/ssh_key")
+            echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' > "$RUNNER_TEMP/known_hosts"
+            export GIT_SSH_COMMAND="ssh -i '$RUNNER_TEMP/ssh_key' -o IdentitiesOnly=yes -o UserKnownHostsFile='$RUNNER_TEMP/known_hosts'"
+          fi
+          uv sync --locked ${{ inputs.sync-args }}
 
       - name: pylint
         run: uv run --no-sync --with pylint pylint --recursive=y ${{ inputs.pylint == 'true' && '.' || inputs.pylint }}
