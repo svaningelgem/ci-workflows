@@ -194,6 +194,7 @@ jobs:
             ${{ inputs.working-directory }}/.coverage.*
             ${{ inputs.working-directory }}/coverage-root
           include-hidden-files: true
+          retention-days: 1
 
   coverage:
     needs: pytest
@@ -253,6 +254,7 @@ jobs:
           name: merged-coverage
           path: ${{ inputs.working-directory }}/coverage.xml
           overwrite: true
+          retention-days: 7
 
       - name: Total coverage
         if: ${{ !cancelled() && steps.combine.outcome == 'success' }}
