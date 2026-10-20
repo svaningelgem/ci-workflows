@@ -217,15 +217,18 @@ jobs:
         with:
           working-directory: ${{ inputs.working-directory }}
 
-      # actions/cache/restore takes one key; the matrix has any number of legs, so restore them through the cache library itself.
       - uses: actions/setup-node@v7
         with:
           node-version: 24
 
-      # The version actions/cache/save@v6 bundles, so both sides compute the same cache version.
-      - name: Install the cache library
-        run: npm install --prefix "$RUNNER_TEMP/cache-client" --no-save --no-audit --no-fund @actions/cache@6.1.0
+      # @actions/cache at the version actions/cache/save@v6 bundles, so both sides compute the same cache version.
+      - name: Fetch the cache library and the restore script
+        run: |
+          npm install --prefix "$RUNNER_TEMP/cache-client" --no-save --no-audit --no-fund @actions/cache@6.1.0
+          curl -fsSL -o "$RUNNER_TEMP/cache-client/restore_coverage_legs.mjs" \
+            https://raw.githubusercontent.com/${{ job.workflow_repository }}/${{ job.workflow_sha }}/scripts/restore_coverage_legs.mjs
 
+      # github-script, not a run step: the runner hands the cache service's token to JavaScript actions only.
       - name: Restore coverage data
         uses: actions/github-script@v9
         env:
@@ -236,16 +239,8 @@ jobs:
         with:
           script: |
             const { pathToFileURL } = require('node:url')
-            const { restoreCache } = await import(pathToFileURL(`${process.env.RUNNER_TEMP}/cache-client/node_modules/@actions/cache/lib/cache.js`))
-            for (const os of JSON.parse(process.env.OSES)) {
-              for (const python of JSON.parse(process.env.PYTHONS)) {
-                // The newest attempt's entry: a leg that passed is not re-run with the ones that failed.
-                const leg = `coverage-${context.runId}-${os}-${python}-`
-                if (!(await restoreCache([process.env.LEGS_PATH], `${leg}${process.env.GITHUB_RUN_ATTEMPT}`, [leg], {}, true))) {
-                  core.warning(`No coverage data from ${os}${python && `, ${python}`}`)
-                }
-              }
-            }
+            const { default: restoreLegs } = await import(pathToFileURL(`${process.env.RUNNER_TEMP}/cache-client/restore_coverage_legs.mjs`))
+            await restoreLegs({ core, context })
 
       - name: Combine coverage
         id: combine
